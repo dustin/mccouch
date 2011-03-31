@@ -1,0 +1,4 @@
+*.beam
+*~
+coverage
+erl_crash.dump
