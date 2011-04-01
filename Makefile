@@ -1,3 +1,5 @@
+COUCH_SRC=../couchdb/src/couchdb
+
 all: ebin compile
 
 ebin:
