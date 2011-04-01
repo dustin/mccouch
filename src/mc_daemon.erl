@@ -32,43 +32,8 @@ handle_call(Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-mk_stat(K, V) -> #mc_response{key=K, body=V}.
-
-round_value(Val) when not is_number(Val) ->
-    Val;
-round_value(Val) when Val == 0 ->
-    integer_to_list(Val);
-round_value(Val) when is_float(Val) ->
-    lists:flatten(io_lib:format("~.6f", [Val]));
-round_value(Val) ->
-    lists:flatten(io_lib:format("~p", [Val])).
-
-%%    float_to_list(erlang:round(Val * 1000.0) / 1000.0).
-
-emit_stat_prop(_Socket, _Opaque, _Prefix, _Key, null) ->
-    ok;
-emit_stat_prop(Socket, Opaque, Prefix, Key, Value) ->
-    mc_connection:respond(Socket, ?STAT, Opaque,
-                          mk_stat(Prefix ++ atom_to_list(Key),
-                                  round_value(Value))).
-
-stats_section(Socket, Opaque, {Values}, Prefix, 0) ->
-    lists:foreach(fun(StatKey) -> emit_stat_prop(Socket, Opaque, Prefix, StatKey,
-                                                 proplists:get_value(StatKey, Values))
-                  end, proplists:get_keys(Values));
-stats_section(Socket, Opaque, {Values}, Prefix, N) ->
-    lists:foreach(fun(StatKey) ->
-                          stats_section(Socket, Opaque,
-                                        proplists:get_value(StatKey, Values),
-                                        Prefix ++ atom_to_list(StatKey) ++ ":", N - 1)
-                  end, proplists:get_keys(Values)).
-
-
 handle_cast({?STAT, _Extra, _Key, _Body, _CAS, Socket, Opaque}, State) ->
-    {AllStats} = couch_stats_aggregator:all(),
-    ?LOG_INFO("Got stats:  ~p~n", [proplists:get_keys(AllStats)]),
-    stats_section(Socket, Opaque, {AllStats}, "", 2),
-    mc_connection:respond(Socket, ?STAT, Opaque, mk_stat("", "")),
+    mc_couch_stats:stats(Socket, Opaque),
     {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
