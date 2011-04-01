@@ -35,6 +35,10 @@ handle_call({?GET, <<>>, Key, <<>>, _CAS}, _From, State) ->
         _ ->
             {reply, #mc_response{status=1, body="Does not exist"}, State}
     end;
+handle_call({?SET, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
+            _From, State) ->
+    NewCas = mc_couch_kv:set(Key, Flags, Expiration, Value),
+    {reply, #mc_response{cas=NewCas}, State};
 handle_call({_OpCode, _Header, _Key, _Body, _CAS}, _From, State) ->
     {reply, #mc_response{status=?UNKNOWN_COMMAND, body="WTF, mate?"}, State};
 handle_call(Request, _From, State) ->

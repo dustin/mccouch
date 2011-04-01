@@ -2,7 +2,7 @@
 
 -include("couch_db.hrl").
 
--export([get/1]).
+-export([get/1, set/4]).
 
 cleanup(EJson, []) -> EJson;
 cleanup(EJson, [Hd|Tl]) -> cleanup(proplists:delete(Hd, EJson), Tl).
@@ -24,3 +24,29 @@ get(Key) ->
         _ -> not_found
     end.
 
+addRev(Db, Key, ToStore) ->
+    case couch_db:open_doc(Db, Key, []) of
+        {ok, Doc} ->
+            {EJson} = couch_doc:to_json_obj(Doc, []),
+            [{<<"_rev">>, proplists:get_value(<<"_rev">>, EJson)} | ToStore];
+        _ ->
+            ToStore
+    end.
+
+-spec set(binary(), integer(), integer(), binary()) -> integer().
+set(Key, Flags, Expiration, Value) ->
+    {EJson} = couch_util:json_decode(Value),
+    ?LOG_INFO("set ejson with keys: ~p.", [proplists:get_keys(EJson)]),
+    ToStore = [{<<"_id">>, Key},
+               {<<"$flags">>, Flags},
+               {<<"$expiration">>, Expiration}
+               | cleanup(EJson)],
+
+    {ok, Db} = couch_db:open(<<"kv">>, []),
+
+    WithRev = addRev(Db, Key, ToStore),
+
+    Doc = couch_doc:from_json_obj({WithRev}),
+
+    couch_db:update_doc(Db, Doc, []),
+    0.
