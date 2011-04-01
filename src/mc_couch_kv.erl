@@ -2,7 +2,7 @@
 
 -include("couch_db.hrl").
 
--export([get/1, set/4]).
+-export([get/1, set/4, delete/1]).
 
 cleanup(EJson, []) -> EJson;
 cleanup(EJson, [Hd|Tl]) -> cleanup(proplists:delete(Hd, EJson), Tl).
@@ -50,3 +50,18 @@ set(Key, Flags, Expiration, Value) ->
 
     couch_db:update_doc(Db, Doc, []),
     0.
+
+delete(Key) ->
+    {ok, Db} = couch_db:open(<<"kv">>, []),
+    case couch_db:open_doc(Db, Key, []) of
+        {ok, Doc} ->
+            {EJson} = couch_doc:to_json_obj(Doc, []),
+            DelMe = [{<<"_deleted">>, true},
+                     {<<"_id">>, Key},
+                     {<<"_rev">>, proplists:get_value(<<"_rev">>, EJson)}],
+            couch_db:update_doc(Db,
+                                couch_doc:from_json_obj({DelMe}), []),
+            ok;
+        _ ->
+            not_found
+    end.
