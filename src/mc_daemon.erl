@@ -24,9 +24,19 @@ init([]) ->
     {ok, S} = mc_tcp_listener:start_link(11213, self()),
     {ok, #state{mc_serv=S}}.
 
+handle_call({?GET, <<>>, Key, <<>>, _CAS}, _From, State) ->
+    error_logger:info_msg("Got GET command for ~p.~n", [Key]),
+    case mc_couch_kv:get(Key) of
+        {ok, Flags, Cas, Data} ->
+            FlagsBin = <<Flags:32>>,
+            {reply,
+             #mc_response{extra=FlagsBin, cas=Cas, body=Data},
+             State};
+        _ ->
+            {reply, #mc_response{status=1, body="Does not exist"}, State}
+    end;
 handle_call({_OpCode, _Header, _Key, _Body, _CAS}, _From, State) ->
     {reply, #mc_response{status=?UNKNOWN_COMMAND, body="WTF, mate?"}, State};
-
 handle_call(Request, _From, State) ->
     ?LOG_DEBUG("MC daemon: got call.", [Request]),
     Reply = ok,
@@ -38,7 +48,7 @@ handle_cast({?STAT, _Extra, _Key, _Body, _CAS, Socket, Opaque}, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 handle_info(_Info, State) ->
-     {noreply, State}.
+    {noreply, State}.
 
 terminate(_Reason, _State) ->
     ok.
