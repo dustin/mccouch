@@ -2,7 +2,7 @@
 
 -include("couch_db.hrl").
 
--export([get/1, set/4, delete/1]).
+-export([get/2, set/5, delete/2]).
 
 cleanup(EJson, []) -> EJson;
 cleanup(EJson, [Hd|Tl]) -> cleanup(proplists:delete(Hd, EJson), Tl).
@@ -10,9 +10,8 @@ cleanup(EJson) ->
     cleanup(EJson, [<<"_id">>, <<"_rev">>, <<"$flags">>, <<"$expiration">>]).
 
 %% ok, Flags, Cas, Data
--spec get(binary()) -> {ok, integer(), integer(), binary()}.
-get(Key) ->
-    {ok, Db} = couch_db:open(<<"kv">>, []),
+-spec get(_, binary()) -> {ok, integer(), integer(), binary()}.
+get(Db, Key) ->
     case couch_db:open_doc(Db, Key, []) of
         {ok, Doc} ->
             {EJson} = couch_doc:to_json_obj(Doc, []),
@@ -33,16 +32,14 @@ addRev(Db, Key, ToStore) ->
             ToStore
     end.
 
--spec set(binary(), integer(), integer(), binary()) -> integer().
-set(Key, Flags, Expiration, Value) ->
+-spec set(_, binary(), integer(), integer(), binary()) -> integer().
+set(Db, Key, Flags, Expiration, Value) ->
     {EJson} = couch_util:json_decode(Value),
     ?LOG_INFO("set ejson with keys: ~p.", [proplists:get_keys(EJson)]),
     ToStore = [{<<"_id">>, Key},
                {<<"$flags">>, Flags},
                {<<"$expiration">>, Expiration}
                | cleanup(EJson)],
-
-    {ok, Db} = couch_db:open(<<"kv">>, []),
 
     WithRev = addRev(Db, Key, ToStore),
 
@@ -51,8 +48,8 @@ set(Key, Flags, Expiration, Value) ->
     couch_db:update_doc(Db, Doc, []),
     0.
 
-delete(Key) ->
-    {ok, Db} = couch_db:open(<<"kv">>, []),
+-spec delete(_, binary()) -> ok|not_found.
+delete(Db, Key) ->
     case couch_db:open_doc(Db, Key, []) of
         {ok, Doc} ->
             {EJson} = couch_doc:to_json_obj(Doc, []),

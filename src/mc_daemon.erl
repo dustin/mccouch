@@ -14,7 +14,7 @@
 -include("couch_db.hrl").
 -include("mc_constants.hrl").
 
--record(state, {mc_serv}).
+-record(state, {mc_serv, db}).
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
@@ -22,11 +22,12 @@ start_link() ->
 init([]) ->
     ?LOG_INFO("MC daemon: starting.", []),
     {ok, S} = mc_tcp_listener:start_link(11213, self()),
-    {ok, #state{mc_serv=S}}.
+    {ok, Db} = couch_db:open(<<"kv">>, []),
+    {ok, #state{mc_serv=S, db=Db}}.
 
 handle_call({?GET, <<>>, Key, <<>>, _CAS}, _From, State) ->
     error_logger:info_msg("Got GET command for ~p.~n", [Key]),
-    case mc_couch_kv:get(Key) of
+    case mc_couch_kv:get(State#state.db, Key) of
         {ok, Flags, Cas, Data} ->
             FlagsBin = <<Flags:32>>,
             {reply,
@@ -37,10 +38,10 @@ handle_call({?GET, <<>>, Key, <<>>, _CAS}, _From, State) ->
     end;
 handle_call({?SET, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
             _From, State) ->
-    NewCas = mc_couch_kv:set(Key, Flags, Expiration, Value),
+    NewCas = mc_couch_kv:set(State#state.db, Key, Flags, Expiration, Value),
     {reply, #mc_response{cas=NewCas}, State};
 handle_call({?DELETE, <<>>, Key, <<>>, _CAS}, _From, State) ->
-    case mc_couch_kv:delete(Key) of
+    case mc_couch_kv:delete(State#state.db, Key) of
         ok ->
             {reply, #mc_response{}, State};
         not_found ->
