@@ -31,40 +31,37 @@ with_open_db(F, State) ->
     couch_db:close(Db),
     NewState.
 
+handle_get_call(Db, Key) ->
+    case mc_couch_kv:get(Db, Key) of
+        {ok, Flags, Cas, Data} ->
+            FlagsBin = <<Flags:32>>,
+            #mc_response{extra=FlagsBin, cas=Cas, body=Data};
+        _ ->
+            #mc_response{status=1, body="Does not exist"}
+    end.
+
+handle_set_call(Db, Key, Flags, Expiration, Value) ->
+    NewCas = mc_couch_kv:set(Db,
+                             Key, Flags,
+                             Expiration, Value),
+    #mc_response{cas=NewCas}.
+
+handle_delete_call(Db, Key) ->
+    case mc_couch_kv:delete(Db, Key) of
+        ok -> #mc_response{};
+        not_found -> #mc_response{status=1, body="Not found"}
+    end.
+
 handle_call({?GET, <<>>, Key, <<>>, _CAS}, _From, State) ->
     error_logger:info_msg("Got GET command for ~p.~n", [Key]),
-    with_open_db(fun(Db) ->
-                         case mc_couch_kv:get(Db, Key) of
-                             {ok, Flags, Cas, Data} ->
-                                 FlagsBin = <<Flags:32>>,
-                                 {reply,
-                                  #mc_response{extra=FlagsBin,
-                                               cas=Cas, body=Data},
-                                  State};
-                             _ ->
-                                 {reply, #mc_response{status=1,
-                                                      body="Does not exist"},
-                                  State}
-                         end
-                 end, State);
+    with_open_db(fun(Db) -> {reply, handle_get_call(Db, Key), State} end, State);
 handle_call({?SET, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
             _From, State) ->
-    with_open_db(fun(Db) ->
-                         NewCas = mc_couch_kv:set(Db,
-                                                  Key, Flags,
-                                                  Expiration, Value),
-                         {reply, #mc_response{cas=NewCas}, State}
+    with_open_db(fun(Db) -> {reply, handle_set_call(Db, Key, Flags, Expiration, Value),
+                             State}
                  end, State);
 handle_call({?DELETE, <<>>, Key, <<>>, _CAS}, _From, State) ->
-    with_open_db(fun(Db) ->
-                         case mc_couch_kv:delete(Db, Key) of
-                             ok ->
-                                 {reply, #mc_response{}, State};
-                             not_found ->
-                                 {reply, #mc_response{status=1,
-                                                      body="Not found"}, State}
-                         end
-                 end, State);
+    with_open_db(fun(Db) -> {reply, handle_delete_call(Db, Key), State} end, State);
 handle_call({_OpCode, _Header, _Key, _Body, _CAS}, _From, State) ->
     {reply, #mc_response{status=?UNKNOWN_COMMAND, body="WTF, mate?"}, State};
 handle_call(Request, _From, State) ->
