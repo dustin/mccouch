@@ -32,7 +32,7 @@ with_open_db(F, State) ->
     NewState.
 
 handle_get_call(Db, Key) ->
-    case mc_couch_kv:get(Db, Key) of
+    case mc_couch_kv_att:get(Db, Key) of
         {ok, Flags, Cas, Data} ->
             FlagsBin = <<Flags:32>>,
             #mc_response{extra=FlagsBin, cas=Cas, body=Data};
@@ -41,9 +41,9 @@ handle_get_call(Db, Key) ->
     end.
 
 handle_set_call(Db, Key, Flags, Expiration, Value) ->
-    NewCas = mc_couch_kv:set(Db,
-                             Key, Flags,
-                             Expiration, Value),
+    NewCas = mc_couch_kv_att:set(Db,
+                                 Key, Flags,
+                                 Expiration, Value),
     #mc_response{cas=NewCas}.
 
 handle_delete_call(Db, Key) ->
