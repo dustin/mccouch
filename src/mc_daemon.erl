@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -16,14 +16,14 @@
 
 -record(state, {mc_serv, db, json_mode}).
 
-start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+start_link(DbName, JsonMode) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [DbName, JsonMode],
+                          []).
 
-init([]) ->
-    ?LOG_INFO("MC daemon: starting.", []),
+init([DbName, JsonMode]) ->
+    ?LOG_INFO("MC daemon: starting: json_mode=~p.", [JsonMode]),
     {ok, S} = mc_tcp_listener:start_link(11213, self()),
-    DbName = <<"kv">>,
-    {ok, #state{mc_serv=S, db=DbName, json_mode=false}}.
+    {ok, #state{mc_serv=S, db=list_to_binary(DbName), json_mode=JsonMode}}.
 
 with_open_db(F, State) ->
     {ok, Db} = couch_db:open(State#state.db, []),
