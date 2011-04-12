@@ -25,8 +25,9 @@ init([DbName, JsonMode]) ->
     {ok, S} = mc_tcp_listener:start_link(11213, self()),
     {ok, #state{mc_serv=S, db=list_to_binary(DbName), json_mode=JsonMode}}.
 
-with_open_db(F, State) ->
-    {ok, Db} = couch_db:open(State#state.db, []),
+with_open_db(F, VBucket, State) ->
+    DbName = lists:flatten(io_lib:format("~s/~p", [State#state.db, VBucket])),
+    {ok, Db} = couch_db:open(list_to_binary(DbName), []),
     NewState = F(Db),
     couch_db:close(Db),
     NewState.
@@ -53,19 +54,21 @@ handle_delete_call(Db, Key) ->
         not_found -> #mc_response{status=1, body="Not found"}
     end.
 
-handle_call({?GET, <<>>, Key, <<>>, _CAS}, _From, State) ->
+handle_call({?GET, VBucket, <<>>, Key, <<>>, _CAS}, _From, State) ->
     error_logger:info_msg("Got GET command for ~p.~n", [Key]),
-    with_open_db(fun(Db) -> {reply, handle_get_call(Db, Key), State} end, State);
-handle_call({?SET, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
+    with_open_db(fun(Db) -> {reply, handle_get_call(Db, Key), State} end,
+                 VBucket, State);
+handle_call({?SET, VBucket, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
             _From, State) ->
     with_open_db(fun(Db) -> {reply, handle_set_call(Db, Key, Flags,
                                                     Expiration, Value,
-                                                   State#state.json_mode),
+                                                    State#state.json_mode),
                              State}
-                 end, State);
-handle_call({?DELETE, <<>>, Key, <<>>, _CAS}, _From, State) ->
-    with_open_db(fun(Db) -> {reply, handle_delete_call(Db, Key), State} end, State);
-handle_call({_OpCode, _Header, _Key, _Body, _CAS}, _From, State) ->
+                 end, VBucket, State);
+handle_call({?DELETE, VBucket, <<>>, Key, <<>>, _CAS}, _From, State) ->
+    with_open_db(fun(Db) -> {reply, handle_delete_call(Db, Key), State} end,
+                 VBucket, State);
+handle_call({_OpCode, _VBucket, _Header, _Key, _Body, _CAS}, _From, State) ->
     {reply, #mc_response{status=?UNKNOWN_COMMAND, body="WTF, mate?"}, State};
 handle_call(Request, _From, State) ->
     ?LOG_DEBUG("MC daemon: got call.", [Request]),
