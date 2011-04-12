@@ -54,6 +54,21 @@ handle_delete_call(Db, Key) ->
         not_found -> #mc_response{status=1, body="Not found"}
     end.
 
+create_db(Key) ->
+    lists:foreach(fun(N) ->
+                          DbName = lists:flatten(io_lib:format("~s/~p",
+                                                               [Key, N])),
+                          {ok, Db} = couch_db:create(list_to_binary(DbName), []),
+                          couch_db:close(Db)
+                  end, lists:seq(0, 1023)).
+
+delete_db(Key) ->
+    lists:foreach(fun(N) ->
+                          DbName = lists:flatten(io_lib:format("~s/~p",
+                                                               [Key, N])),
+                          ok = couch_server:delete(list_to_binary(DbName), [])
+                  end, lists:seq(0, 1023)).
+
 handle_call({?GET, VBucket, <<>>, Key, <<>>, _CAS}, _From, State) ->
     error_logger:info_msg("Got GET command for ~p.~n", [Key]),
     with_open_db(fun(Db) -> {reply, handle_get_call(Db, Key), State} end,
@@ -68,7 +83,15 @@ handle_call({?SET, VBucket, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
 handle_call({?DELETE, VBucket, <<>>, Key, <<>>, _CAS}, _From, State) ->
     with_open_db(fun(Db) -> {reply, handle_delete_call(Db, Key), State} end,
                  VBucket, State);
-handle_call({_OpCode, _VBucket, _Header, _Key, _Body, _CAS}, _From, State) ->
+handle_call({?CREATE_BUCKET, 0, <<>>, Key, <<0>>, 0}, _From, State) ->
+    create_db(Key),
+    {reply, #mc_response{body="Done!"}, State};
+handle_call({?DELETE_BUCKET, 0, <<>>, Key, <<>>, 0}, _From, State) ->
+    delete_db(Key),
+    {reply, #mc_response{body="Done!"}, State};
+handle_call({OpCode, VBucket, Header, Key, Body, CAS}, _From, State) ->
+    ?LOG_INFO("MC daemon: got unhandled call: ~p/~p/~p/~p/~p/~p.",
+               [OpCode, VBucket, Header, Key, Body, CAS]),
     {reply, #mc_response{status=?UNKNOWN_COMMAND, body="WTF, mate?"}, State};
 handle_call(Request, _From, State) ->
     ?LOG_DEBUG("MC daemon: got call.", [Request]),

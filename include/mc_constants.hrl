@@ -44,6 +44,9 @@
 -define(RDECR,       16#3b).
 -define(RDECRQ,      16#3c).
 
+-define(CREATE_BUCKET, 16#85).
+-define(DELETE_BUCKET, 16#86).
+
 % Response status codes.
 -define(SUCCESS,          16#00).
 -define(KEY_ENOENT,       16#01).
