@@ -58,12 +58,24 @@ mk_att_doc(Key, Flags, Expiration, Value, Reason) ->
          {[{<<"content_type">>, <<"application/content-stream">>},
            {<<"data">>, base64:encode(Value)}]}}]}}].
 
+%% Reject docs that have keys starting with _ or $
+validate([]) -> ok;
+validate([{<<$_:8,_/binary>>,_Val}|_Tl]) -> throw(invalid_key);
+validate([{<<$$:8,_/binary>>, _Val}|_Tl]) -> throw(invalid_key);
+validate([_|Tl]) -> validate(Tl).
+
+parse_json(Value) ->
+    {J} = couch_util:json_decode(Value),
+    validate(J),
+    J.
 
 mk_json_doc(Key, Flags, Expiration, Value) ->
-    case (catch couch_util:json_decode(Value)) of
+    case (catch parse_json(Value)) of
         {invalid_json, _} ->
             mk_att_doc(Key, Flags, Expiration, Value, <<"invalid_json">>);
-        {EJson} ->
+        invalid_key ->
+            mk_att_doc(Key, Flags, Expiration, Value, <<"invalid_key">>);
+        EJson ->
             [{<<"_id">>, Key},
              {<<"$flags">>, Flags},
              {<<"$expiration">>, Expiration}
