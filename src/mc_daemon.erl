@@ -9,6 +9,9 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+%% Kind of ugly to export these, but modularity win.
+-export([with_open_db/3, db_name/2, db_prefix/1]).
+
 -define(SERVER, ?MODULE).
 
 -include("couch_db.hrl").
@@ -25,9 +28,13 @@ init([DbName, JsonMode]) ->
     {ok, S} = mc_tcp_listener:start_link(11213, self()),
     {ok, #state{mc_serv=S, db=list_to_binary(DbName), json_mode=JsonMode}}.
 
+db_name(VBucket, State)->
+    lists:flatten(io_lib:format("~s/~p", [State#state.db, VBucket])).
+
+db_prefix(State) -> State#state.db.
+
 with_open_db(F, VBucket, State) ->
-    DbName = lists:flatten(io_lib:format("~s/~p", [State#state.db, VBucket])),
-    {ok, Db} = couch_db:open(list_to_binary(DbName), []),
+    {ok, Db} = couch_db:open(list_to_binary(db_name(VBucket, State)), []),
     NewState = F(Db),
     couch_db:close(Db),
     NewState.
@@ -69,74 +76,6 @@ delete_db(Key) ->
                           couch_server:delete(list_to_binary(DbName), [])
                   end, lists:seq(0, 1023)).
 
-get_vbucket_state(VBucket, State) ->
-    with_open_db(fun(Db) ->
-                         case mc_couch_kv:get(Db, <<"_local/vbstate">>) of
-                             {ok, _Flags, 0, StateDoc} ->
-                                 {J} = couch_util:json_decode(StateDoc),
-                                 proplists:get_value(<<"state">>, J);
-                             not_found ->
-                                 "dead"
-                         end
-                 end,
-                 VBucket, State).
-
-set_vbucket(VBucket, StateName, State) ->
-    DbName = lists:flatten(io_lib:format("~s/~p",
-                                         [State#state.db, VBucket])),
-    {ok, Db} = case couch_db:create(list_to_binary(DbName), []) of
-                   {ok, D} ->
-                       {ok, D};
-                   _ ->
-                       couch_db:open(list_to_binary(DbName), [])
-               end,
-    StateJson = lists:flatten(io_lib:format("{\"state\": ~p}", [StateName])),
-    mc_couch_kv:set(Db, <<"_local/vbstate">>, 0, 0,
-                    list_to_binary(StateJson), true),
-    couch_db:close(Db),
-    {reply, #mc_response{}, State}.
-
-handle_delete_vbucket(VBucket, State) ->
-    case get_vbucket_state(VBucket, State) of
-        <<"dead">> ->
-            DbName = lists:flatten(io_lib:format("~s/~p",
-                                                 [State#state.db, VBucket])),
-            couch_server:delete(list_to_binary(DbName), []),
-            #mc_response{};
-        _ ->
-            #mc_response{status=?EINVAL, body="vbucket is not dead"}
-    end.
-
-handle_vbucket_stats(Socket, Opaque, State) ->
-    {ok, DBs} = couch_server:all_databases(),
-    DBPrefix = State#state.db,
-    Len = size(DBPrefix),
-    lists:foreach(fun(DBName) ->
-                          case (catch binary:split(DBName, <<$/>>,
-                                                   [{scope, {Len,size(DBName)-Len}}])) of
-                              [DBPrefix, VB] ->
-                                  VBStr = binary_to_list(VB),
-                                  VBInt = list_to_integer(VBStr),
-                                  StatKey = io_lib:format("vb_~p", [VBInt]),
-                                  StatVal = get_vbucket_state(VBInt, State),
-                                  mc_connection:respond(Socket, ?STAT, Opaque,
-                                                        mc_couch_stats:mk_stat(StatKey,
-                                                                               StatVal));
-                              _ -> ok
-                          end
-                  end, DBs),
-    mc_connection:respond(Socket, ?STAT, Opaque,
-                          mc_couch_stats:mk_stat("", "")).
-
-handle_set_vb_state(VBucket, ?VB_STATE_ACTIVE, State) ->
-    set_vbucket(VBucket, "active", State);
-handle_set_vb_state(VBucket, ?VB_STATE_REPLICA, State) ->
-    set_vbucket(VBucket, "replica", State);
-handle_set_vb_state(VBucket, ?VB_STATE_PENDING, State) ->
-    set_vbucket(VBucket, "pending", State);
-handle_set_vb_state(VBucket, ?VB_STATE_DEAD, State) ->
-    set_vbucket(VBucket, "dead", State).
-
 handle_call({?GET, VBucket, <<>>, Key, <<>>, _CAS}, _From, State) ->
     error_logger:info_msg("Got GET command for ~p.~n", [Key]),
     with_open_db(fun(Db) -> {reply, handle_get_call(Db, Key), State} end,
@@ -158,9 +97,9 @@ handle_call({?DELETE_BUCKET, 0, <<>>, Key, <<>>, 0}, _From, State) ->
     delete_db(Key),
     {reply, #mc_response{body="Done!"}, State};
 handle_call({?SET_VBUCKET_STATE, VBucket, <<>>, <<>>, <<VBState:32>>, 0}, _From, State) ->
-    handle_set_vb_state(VBucket, VBState, State);
+    mc_couch_vbucket:handle_set_state(VBucket, VBState, State);
 handle_call({?DELETE_VBUCKET, VBucket, <<>>, <<>>, <<>>, 0}, _From, State) ->
-    {reply, handle_delete_vbucket(VBucket, State), State};
+    {reply, mc_couch_vbucket:handle_delete(VBucket, State), State};
 handle_call({OpCode, VBucket, Header, Key, Body, CAS}, _From, State) ->
     ?LOG_INFO("MC daemon: got unhandled call: ~p/~p/~p/~p/~p/~p.",
                [OpCode, VBucket, Header, Key, Body, CAS]),
@@ -171,7 +110,7 @@ handle_call(Request, _From, State) ->
     {reply, Reply, State}.
 
 handle_cast({?STAT, _Extra, <<"vbucket">>, _Body, _CAS, Socket, Opaque}, State) ->
-    handle_vbucket_stats(Socket, Opaque, State),
+    mc_couch_vbucket:handle_stats(Socket, Opaque, State),
     {noreply, State};
 handle_cast({?STAT, _Extra, _Key, _Body, _CAS, Socket, Opaque}, State) ->
     mc_couch_stats:stats(Socket, Opaque),
