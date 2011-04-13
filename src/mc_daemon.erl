@@ -96,6 +96,17 @@ set_vbucket(VBucket, StateName, State) ->
     couch_db:close(Db),
     {reply, #mc_response{}, State}.
 
+handle_delete_vbucket(VBucket, State) ->
+    case get_vbucket_state(VBucket, State) of
+        <<"dead">> ->
+            DbName = lists:flatten(io_lib:format("~s/~p",
+                                                 [State#state.db, VBucket])),
+            couch_server:delete(list_to_binary(DbName), []),
+            #mc_response{};
+        _ ->
+            #mc_response{status=?EINVAL, body="vbucket is not dead"}
+    end.
+
 handle_vbucket_stats(Socket, Opaque, State) ->
     {ok, DBs} = couch_server:all_databases(),
     DBPrefix = State#state.db,
@@ -148,6 +159,8 @@ handle_call({?DELETE_BUCKET, 0, <<>>, Key, <<>>, 0}, _From, State) ->
     {reply, #mc_response{body="Done!"}, State};
 handle_call({?SET_VBUCKET_STATE, VBucket, <<>>, <<>>, <<VBState:32>>, 0}, _From, State) ->
     handle_set_vb_state(VBucket, VBState, State);
+handle_call({?DELETE_VBUCKET, VBucket, <<>>, <<>>, <<>>, 0}, _From, State) ->
+    {reply, handle_delete_vbucket(VBucket, State), State};
 handle_call({OpCode, VBucket, Header, Key, Body, CAS}, _From, State) ->
     ?LOG_INFO("MC daemon: got unhandled call: ~p/~p/~p/~p/~p/~p.",
                [OpCode, VBucket, Header, Key, Body, CAS]),
