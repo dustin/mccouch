@@ -46,6 +46,7 @@
 
 -define(CREATE_BUCKET, 16#85).
 -define(DELETE_BUCKET, 16#86).
+-define(SELECT_BUCKET, 16#89).
 
 %% vbucket stuff
 -define(SET_VBUCKET_STATE, 16#3d).
