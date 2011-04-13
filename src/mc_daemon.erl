@@ -82,7 +82,7 @@ handle_call({?SET, VBucket, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
 handle_call({?DELETE, VBucket, <<>>, Key, <<>>, _CAS}, _From, State) ->
     with_open_db(fun(Db) -> {reply, handle_delete_call(Db, Key), State} end,
                  VBucket, State);
-handle_call({?DELETE_BUCKET, 0, <<>>, Key, <<>>, 0}, _From, State) ->
+handle_call({?DELETE_BUCKET, _VBucket, <<>>, Key, <<>>, 0}, _From, State) ->
     delete_db(Key),
     {reply, #mc_response{body="Done!"}, State};
 handle_call({?SELECT_BUCKET, _VBucket, <<>>, Name, <<>>, 0}, _From, State) ->
