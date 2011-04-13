@@ -61,14 +61,6 @@ handle_delete_call(Db, Key) ->
         not_found -> #mc_response{status=1, body="Not found"}
     end.
 
-create_db(Key) ->
-    lists:foreach(fun(N) ->
-                          DbName = lists:flatten(io_lib:format("~s/~p",
-                                                               [Key, N])),
-                          {ok, Db} = couch_db:create(list_to_binary(DbName), []),
-                          couch_db:close(Db)
-                  end, lists:seq(0, 1023)).
-
 delete_db(Key) ->
     lists:foreach(fun(N) ->
                           DbName = lists:flatten(io_lib:format("~s/~p",
@@ -90,9 +82,6 @@ handle_call({?SET, VBucket, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
 handle_call({?DELETE, VBucket, <<>>, Key, <<>>, _CAS}, _From, State) ->
     with_open_db(fun(Db) -> {reply, handle_delete_call(Db, Key), State} end,
                  VBucket, State);
-handle_call({?CREATE_BUCKET, 0, <<>>, Key, <<0>>, 0}, _From, State) ->
-    create_db(Key),
-    {reply, #mc_response{body="Done!"}, State};
 handle_call({?DELETE_BUCKET, 0, <<>>, Key, <<>>, 0}, _From, State) ->
     delete_db(Key),
     {reply, #mc_response{body="Done!"}, State};
