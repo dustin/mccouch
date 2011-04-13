@@ -47,6 +47,18 @@
 -define(CREATE_BUCKET, 16#85).
 -define(DELETE_BUCKET, 16#86).
 
+%% vbucket stuff
+-define(SET_VBUCKET_STATE, 16#3d).
+-define(GET_VBUCKET_STATE, 16#3e).
+-define(DELETE_VBUCKET,    16#3f).
+
+%% VBucket States
+
+-define(VB_STATE_ACTIVE,  16#1).
+-define(VB_STATE_REPLICA, 16#2).
+-define(VB_STATE_PENDING, 16#3).
+-define(VB_STATE_DEAD,    16#4).
+
 % Response status codes.
 -define(SUCCESS,          16#00).
 -define(KEY_ENOENT,       16#01).

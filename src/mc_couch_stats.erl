@@ -3,7 +3,7 @@
 -include("couch_db.hrl").
 -include("mc_constants.hrl").
 
--export([stats/2]).
+-export([stats/2, mk_stat/2]).
 
 mk_stat(K, V) -> #mc_response{key=K, body=V}.
 
