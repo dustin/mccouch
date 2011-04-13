@@ -34,7 +34,7 @@ read_data(Socket, N, ForWhat) ->
     Data.
 
 process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, ?STAT:8, KeyLen:16,
-                                            ExtraLen:8, 0:8, 0:16,
+                                            ExtraLen:8, 0:8, _VBucket:16,
                                             BodyLen:32,
                                             Opaque:32,
                                             CAS:64>>}) ->
