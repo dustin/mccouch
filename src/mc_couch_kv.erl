@@ -27,6 +27,22 @@ addRev(Db, Key, ToStore) ->
             ToStore
     end.
 
+json_encode(V) ->
+    Handler =
+    fun({L}) when is_list(L) ->
+        {struct,L};
+    (Bad) ->
+        exit({json_encode, {bad_term, Bad}})
+    end,
+    (mochijson2:encoder([{handler, Handler}]))(V).
+
+json_decode(V) ->
+    try (mochijson2:decoder([{object_hook, fun({struct,L}) -> {L} end}]))(V)
+    catch
+        _Type:_Error ->
+            throw({invalid_json,V})
+    end.
+
 %% ok, Flags, Cas, Data
 -spec get(_, binary()) -> {ok, integer(), integer(), binary()}.
 get(Db, Key) ->
@@ -40,7 +56,7 @@ get(Db, Key) ->
                 {ok, AttData} ->
                     {ok, Flags, 0, AttData};
                 _ ->
-                    Encoded = iolist_to_binary(couch_util:json_encode(
+                    Encoded = iolist_to_binary(json_encode(
                                                  {cleanup(EJson)})),
                     ?LOG_INFO("MC daemon: got doc ~p:  ~p.", [Key, Encoded]),
                     {ok, Flags, 0, Encoded}
@@ -65,7 +81,7 @@ validate([{<<$$:8,_/binary>>, _Val}|_Tl]) -> throw(invalid_key);
 validate([_|Tl]) -> validate(Tl).
 
 parse_json(Value) ->
-    {J} = couch_util:json_decode(Value),
+    {J} = json_decode(Value),
     validate(J),
     J.
 
