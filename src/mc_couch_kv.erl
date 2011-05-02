@@ -19,7 +19,7 @@ cleanup(EJson) ->
     cleanup(EJson, [<<"_id">>, <<"_rev">>, <<"$flags">>, <<"$expiration">>]).
 
 addRev(Db, Key, Doc) ->
-    case couch_db:get_doc_info(Db, Key, []) of
+    case couch_db:get_doc_info(Db, Key) of
         {ok, #doc_info{revs=[#rev_info{rev=Rev,seq=Seq}]}} ->
             Doc#doc{revs={Seq,[Rev]}};
         _ ->
@@ -65,16 +65,16 @@ get(Db, Key) ->
 
 mk_att_doc(Key, Flags, Expiration, Value, Reason) ->
     #doc{id=Key,
-        body = {[
-                 {<<"$flags">>, Flags},
-                 {<<"$expiration">>, Expiration},
-                 {<<"$att_reason">>, Reason}
+         body = {[
+                  {<<"$flags">>, Flags},
+                  {<<"$expiration">>, Expiration},
+                  {<<"$att_reason">>, Reason}
                  ]},
-        atts = #att{
-                name= <<"value">>,
-                type= <<"application/content-stream">>,
-                data= Value}
-                }.
+         atts = [#att{
+                    name= <<"value">>,
+                    type= <<"application/content-stream">>,
+                    data= Value}
+                ]}.
 
 %% Reject docs that have keys starting with _ or $
 validate([]) -> ok;
