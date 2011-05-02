@@ -18,13 +18,12 @@ cleanup(EJson, [Hd|Tl]) -> cleanup(proplists:delete(Hd, EJson), Tl).
 cleanup(EJson) ->
     cleanup(EJson, [<<"_id">>, <<"_rev">>, <<"$flags">>, <<"$expiration">>]).
 
-addRev(Db, Key, ToStore) ->
-    case couch_db:open_doc(Db, Key, []) of
-        {ok, Doc} ->
-            {EJson} = couch_doc:to_json_obj(Doc, []),
-            [{<<"_rev">>, proplists:get_value(<<"_rev">>, EJson)} | ToStore];
+addRev(Db, Key, Doc) ->
+    case couch_db:get_doc_info(Db, Key, []) of
+        {ok, #doc_info{revs=[#rev_info{rev=Rev,seq=Seq}]}} ->
+            Doc#doc{revs={Seq,[Rev]}};
         _ ->
-            ToStore
+            Doc
     end.
 
 json_encode(V) ->
@@ -65,14 +64,17 @@ get(Db, Key) ->
     end.
 
 mk_att_doc(Key, Flags, Expiration, Value, Reason) ->
-    [{<<"_id">>, Key},
-     {<<"$flags">>, Flags},
-     {<<"$expiration">>, Expiration},
-     {<<"$att_reason">>, Reason},
-     {<<"_attachments">>,
-      {[{<<"value">>,
-         {[{<<"content_type">>, <<"application/content-stream">>},
-           {<<"data">>, base64:encode(Value)}]}}]}}].
+    #doc{id=Key,
+        body = {[
+                 {<<"$flags">>, Flags},
+                 {<<"$expiration">>, Expiration},
+                 {<<"$att_reason">>, Reason}
+                 ]},
+        atts = #att{
+                name= <<"value">>,
+                type= <<"application/content-stream">>,
+                data= Value}
+                }.
 
 %% Reject docs that have keys starting with _ or $
 validate([]) -> ok;
@@ -92,10 +94,12 @@ mk_json_doc(Key, Flags, Expiration, Value) ->
         invalid_key ->
             mk_att_doc(Key, Flags, Expiration, Value, <<"invalid_key">>);
         EJson ->
-            [{<<"_id">>, Key},
-             {<<"$flags">>, Flags},
-             {<<"$expiration">>, Expiration}
-             | cleanup(EJson)]
+            #doc{id=Key,
+                body={[
+                    {<<"$flags">>, Flags},
+                    {<<"$expiration">>, Expiration}
+                    | cleanup(EJson)]}
+                }
     end.
 
 mk_doc(Key, Flags, Expiration, Value, WantJson) ->
@@ -108,8 +112,7 @@ mk_doc(Key, Flags, Expiration, Value, WantJson) ->
 
 -spec set(_, binary(), integer(), integer(), binary(), boolean()) -> integer().
 set(Db, Key, Flags, Expiration, Value, JsonMode) ->
-    WithRev = addRev(Db, Key, mk_doc(Key, Flags, Expiration, Value, JsonMode)),
-    Doc = couch_doc:from_json_obj({WithRev}),
+    Doc = addRev(Db, Key, mk_doc(Key, Flags, Expiration, Value, JsonMode)),
     couch_db:update_doc(Db, Doc, []),
     0.
 
