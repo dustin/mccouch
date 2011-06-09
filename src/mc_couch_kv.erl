@@ -19,6 +19,13 @@ cleanup(EJson, [Hd|Tl]) -> cleanup(proplists:delete(Hd, EJson), Tl).
 cleanup(EJson) ->
     cleanup(EJson, [<<"_id">>, <<"_rev">>, <<"$flags">>, <<"$expiration">>]).
 
+addRev(Db, <<?LOCAL_DOC_PREFIX, _/binary>> = Key, Doc) ->
+    case couch_db:open_doc(Db, Key) of
+    {ok, #doc{revs = Revs}} ->
+        Doc#doc{revs = Revs};
+    _ ->
+        Doc
+    end;
 addRev(Db, Key, Doc) ->
     case couch_db:get_doc_info(Db, Key) of
         {ok, #doc_info{revs=[#rev_info{rev={Pos,RevId}} | _]}} ->
