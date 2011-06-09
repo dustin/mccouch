@@ -36,14 +36,9 @@ set_vbucket(VBucket, StateName, State) ->
     {reply, #mc_response{}, State}.
 
 handle_delete(VBucket, State) ->
-    case get_state(VBucket, State) of
-        <<"dead">> ->
-            DbName = mc_daemon:db_name(VBucket, State),
-            couch_server:delete(list_to_binary(DbName), []),
-            #mc_response{};
-        _ ->
-            #mc_response{status=?EINVAL, body="vbucket is not dead"}
-    end.
+    DbName = mc_daemon:db_name(VBucket, State),
+    couch_server:delete(list_to_binary(DbName), []),
+    #mc_response{}.
 
 handle_stats(Socket, Opaque, State) ->
     {ok, DBs} = couch_server:all_databases(),
