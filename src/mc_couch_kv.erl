@@ -3,6 +3,7 @@
 -include("couch_db.hrl").
 
 -export([get/2, set/6, delete/2]).
+-export([json_encode/1, json_decode/1]).
 
 dig_out_attachment(Doc, FileName) ->
     case [A || A <- Doc#doc.atts, A#att.name == FileName] of
