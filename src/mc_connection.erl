@@ -33,6 +33,13 @@ read_data(Socket, N, ForWhat) ->
     {ok, Data} = gen_tcp:recv(Socket, N),
     Data.
 
+read_message(Socket, KeyLen, ExtraLen, BodyLen) ->
+    Extra = read_data(Socket, ExtraLen, extra),
+    Key = read_data(Socket, KeyLen, key),
+    Body = read_data(Socket, BodyLen - (KeyLen + ExtraLen), body),
+
+    {Extra, Key, Body}.
+
 process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, ?STAT:8, KeyLen:16,
                                             ExtraLen:8, 0:8, _VBucket:16,
                                             BodyLen:32,
@@ -40,9 +47,7 @@ process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, ?STAT:8, KeyLen:16,
                                             CAS:64>>}) ->
     error_logger:info_msg("Got a stat request for ~p.~n", [StorageServer]),
 
-    Extra = read_data(Socket, ExtraLen, extra),
-    Key = read_data(Socket, KeyLen, key),
-    Body = read_data(Socket, BodyLen - (KeyLen + ExtraLen), body),
+    {Extra, Key, Body} = read_message(Socket, KeyLen, ExtraLen, BodyLen),
 
     % Hand the request off to the server.
     gen_server:cast(StorageServer, {?STAT, Extra, Key, Body, CAS, Socket, Opaque});
@@ -54,9 +59,7 @@ process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, OpCode:8, KeyLen:16,
     error_logger:info_msg("Got message of type ~p to give to ~p.~n",
                           [OpCode, StorageServer]),
 
-    Extra = read_data(Socket, ExtraLen, extra),
-    Key = read_data(Socket, KeyLen, key),
-    Body = read_data(Socket, BodyLen - (KeyLen + ExtraLen), body),
+    {Extra, Key, Body} = read_message(Socket, KeyLen, ExtraLen, BodyLen),
 
     % Hand the request off to the server.
     Res = gen_server:call(StorageServer, {OpCode, VBucket, Extra, Key, Body, CAS}),
