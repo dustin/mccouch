@@ -21,8 +21,8 @@ cleanup(EJson) ->
 
 addRev(Db, Key, Doc) ->
     case couch_db:get_doc_info(Db, Key) of
-        {ok, #doc_info{revs=[#rev_info{rev=Rev,seq=Seq}]}} ->
-            Doc#doc{revs={Seq,[Rev]}};
+        {ok, #doc_info{revs=[#rev_info{rev={Pos,RevId}} | _]}} ->
+            Doc#doc{revs={Pos,[RevId]}};
         _ ->
             Doc
     end.
