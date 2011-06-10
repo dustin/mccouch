@@ -56,7 +56,6 @@ get(Db, Key) ->
     case couch_db:open_doc(Db, Key, []) of
         {ok, Doc} ->
             {EJson} = couch_doc:to_json_obj(Doc, []),
-            ?LOG_INFO("Doc keys ~p.", [proplists:get_keys(EJson)]),
             Flags = proplists:get_value(<<"$flags">>, EJson, 0),
 
             case dig_out_attachment(Doc, <<"value">>) of
@@ -65,7 +64,6 @@ get(Db, Key) ->
                 _ ->
                     Encoded = iolist_to_binary(json_encode(
                                                  {cleanup(EJson)})),
-                    ?LOG_INFO("MC daemon: got doc ~p:  ~p.", [Key, Encoded]),
                     {ok, Flags, 0, Encoded}
             end;
         _ -> not_found
