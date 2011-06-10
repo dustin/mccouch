@@ -6,8 +6,7 @@
 -include("mc_constants.hrl").
 
 bin_size(undefined) -> 0;
-bin_size(List) when is_list(List) -> bin_size(list_to_binary(List));
-bin_size(Binary) -> size(Binary).
+bin_size(IoList) -> iolist_size(IoList).
 
 xmit(_Socket, undefined) -> ok;
 xmit(Socket, List) when is_list(List) -> xmit(Socket, list_to_binary(List));
