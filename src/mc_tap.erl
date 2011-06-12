@@ -19,9 +19,7 @@ run(DbName, Opaque, Socket, <<Flags:32>>, Extra) ->
                           #mc_response{status=?EINVAL,
                                        body="Only dump+1 vbucket is allowed"}).
 
-emit_tap_doc(Socket, Opaque, VBucketId, Key, Flags, _Cas, Data) ->
-    %% TODO:  Make this work
-    Expiration = 0,
+emit_tap_doc(Socket, Opaque, VBucketId, Key, Flags, Expiration, _Cas, Data) ->
     Extras = <<0:16, 0:16,    %% length, flags
                0:8,           %% TTL
                0:8, 0:8, 0:8, %% reserved
@@ -41,8 +39,9 @@ process_tap_stream(BaseDbName, Opaque, VBucketId, Socket) ->
     AdapterFun = fun(#full_doc_info{id=Id}=FullDocInfo, _Offset, Acc) ->
                          case couch_doc:to_doc_info(FullDocInfo) of
                              #doc_info{revs=[#rev_info{deleted=false}|_]} = _DocInfo ->
-                                 {ok, Flags, Cas, Data} = mc_couch_kv:get(Db, Id),
-                                 emit_tap_doc(Socket, Opaque, VBucketId, Id, Flags, Cas, Data),
+                                 {ok, Flags, Expiration, Cas, Data} = mc_couch_kv:get(Db, Id),
+                                 emit_tap_doc(Socket, Opaque, VBucketId, Id,
+                                              Flags, Expiration, Cas, Data),
                                  {ok, Acc};
                              #doc_info{revs=[#rev_info{deleted=true}|_]} ->
                                  {ok, Acc}

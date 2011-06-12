@@ -41,7 +41,7 @@ with_open_db(F, VBucket, State) ->
 
 handle_get_call(Db, Key) ->
     case mc_couch_kv:get(Db, Key) of
-        {ok, Flags, Cas, Data} ->
+        {ok, Flags, _Expiration, Cas, Data} ->
             FlagsBin = <<Flags:32>>,
             #mc_response{extra=FlagsBin, cas=Cas, body=Data};
         _ ->

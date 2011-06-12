@@ -12,7 +12,7 @@
 get_state(VBucket, State) ->
     mc_daemon:with_open_db(fun(Db) ->
                                    case mc_couch_kv:get(Db, <<"_local/vbstate">>) of
-                                       {ok, _Flags, 0, StateDoc} ->
+                                       {ok, _Flags, _Expiration, 0, StateDoc} ->
                                            {J} = mc_couch_kv:json_decode(StateDoc),
                                            proplists:get_value(<<"state">>, J);
                                        not_found ->

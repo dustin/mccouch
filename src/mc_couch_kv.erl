@@ -50,21 +50,22 @@ json_decode(V) ->
             throw({invalid_json,V})
     end.
 
-%% ok, Flags, Cas, Data
--spec get(_, binary()) -> {ok, integer(), integer(), binary()}.
+%% ok, Flags, Expiration, Cas, Data
+-spec get(_, binary()) -> {ok, integer(), integer(), integer(), binary()}.
 get(Db, Key) ->
     case couch_db:open_doc(Db, Key, []) of
         {ok, Doc} ->
             {EJson} = couch_doc:to_json_obj(Doc, []),
             Flags = proplists:get_value(<<"$flags">>, EJson, 0),
+            Expiration = proplists:get_value(<<"$expiration">>, EJson, 0),
 
             case dig_out_attachment(Doc, <<"value">>) of
                 {ok, AttData} ->
-                    {ok, Flags, 0, AttData};
+                    {ok, Flags, Expiration, 0, AttData};
                 _ ->
                     Encoded = iolist_to_binary(json_encode(
                                                  {cleanup(EJson)})),
-                    {ok, Flags, 0, Encoded}
+                    {ok, Flags, Expiration, 0, Encoded}
             end;
         _ -> not_found
     end.
