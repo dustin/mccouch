@@ -22,7 +22,7 @@ run(DbName, Opaque, Socket, <<Flags:32>>, Extra) ->
 emit_tap_doc(Socket, Opaque, VBucketId, Key, Flags, _Cas, Data) ->
     %% TODO:  Make this work
     Expiration = 0,
-    Extras = <<8:16, 0:16,    %% length, flags
+    Extras = <<0:16, 0:16,    %% length, flags
                0:8,           %% TTL
                0:8, 0:8, 0:8, %% reserved
                Flags:32, Expiration:32>>,
