@@ -34,7 +34,6 @@ process_tap_stream(BaseDbName, Opaque, VBucketId, Socket) ->
 
     DbName = lists:flatten(io_lib:format("~s/~p", [BaseDbName, VBucketId])),
     {ok, Db} = couch_db:open(list_to_binary(DbName), []),
-    {ok, Info} = couch_db:get_db_info(Db),
 
     AdapterFun = fun(#full_doc_info{id=Id}=FullDocInfo, _Offset, Acc) ->
                          case couch_doc:to_doc_info(FullDocInfo) of
