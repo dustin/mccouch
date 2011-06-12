@@ -19,14 +19,14 @@ cleanup(EJson, [Hd|Tl]) -> cleanup(proplists:delete(Hd, EJson), Tl).
 cleanup(EJson) ->
     cleanup(EJson, [<<"_id">>, <<"_rev">>, <<"$flags">>, <<"$expiration">>]).
 
-addRev(Db, <<?LOCAL_DOC_PREFIX, _/binary>> = Key, Doc) ->
+addRev(Db, #doc{id = <<?LOCAL_DOC_PREFIX, _/binary>> = Key} = Doc) ->
     case couch_db:open_doc(Db, Key) of
     {ok, #doc{revs = Revs}} ->
         Doc#doc{revs = Revs};
     _ ->
         Doc
     end;
-addRev(Db, Key, Doc) ->
+addRev(Db, #doc{id = Key} = Doc) ->
     case couch_db:get_doc_info(Db, Key) of
         {ok, #doc_info{revs=[#rev_info{rev={Pos,RevId}} | _]}} ->
             Doc#doc{revs={Pos,[RevId]}};
@@ -118,14 +118,14 @@ mk_doc(Key, Flags, Expiration, Value, WantJson) ->
 
 -spec set(_, binary(), integer(), integer(), binary(), boolean()) -> integer().
 set(Db, Key, Flags, Expiration, Value, JsonMode) ->
-    Doc = addRev(Db, Key, mk_doc(Key, Flags, Expiration, Value, JsonMode)),
+    Doc = addRev(Db, mk_doc(Key, Flags, Expiration, Value, JsonMode)),
     couch_db:update_doc(Db, Doc, []),
     0.
 
 -spec delete(_, binary()) -> ok|not_found.
 delete(Db, Key) ->
     Doc = #doc{id = Key, deleted = true, body = {[]}},
-    case addRev(Db, Key, Doc) of
+    case addRev(Db, Doc) of
         Doc ->
             not_found;
         Doc2 ->
