@@ -23,21 +23,21 @@ get_state(VBucket, State) ->
 
 set_vbucket(VBucket, StateName, State) ->
     DbName = mc_daemon:db_name(VBucket, State),
-    {ok, Db} = case couch_db:create(list_to_binary(DbName), []) of
+    {ok, Db} = case couch_db:create(DbName, []) of
                    {ok, D} ->
                        {ok, D};
                    _ ->
-                       couch_db:open(list_to_binary(DbName), [])
+                       couch_db:open(DbName, [])
                end,
-    StateJson = lists:flatten(io_lib:format("{\"state\": ~p}", [StateName])),
+    StateJson = ["{\"state\": \"", StateName, "\"}"],
     mc_couch_kv:set(Db, <<"_local/vbstate">>, 0, 0,
-                    list_to_binary(StateJson), true),
+                    StateJson, true),
     couch_db:close(Db),
     {reply, #mc_response{}, State}.
 
 handle_delete(VBucket, State) ->
     DbName = mc_daemon:db_name(VBucket, State),
-    couch_server:delete(list_to_binary(DbName), []),
+    couch_server:delete(DbName, []),
     #mc_response{}.
 
 handle_stats(Socket, Opaque, State) ->

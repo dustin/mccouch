@@ -29,12 +29,12 @@ init([DbName, JsonMode]) ->
     {ok, #state{mc_serv=S, db=list_to_binary(DbName), json_mode=JsonMode}}.
 
 db_name(VBucket, State)->
-    lists:flatten(io_lib:format("~s/~p", [State#state.db, VBucket])).
+    iolist_to_binary([State#state.db, $/, integer_to_list(VBucket)]).
 
 db_prefix(State) -> State#state.db.
 
 with_open_db(F, VBucket, State) ->
-    {ok, Db} = couch_db:open(list_to_binary(db_name(VBucket, State)), []),
+    {ok, Db} = couch_db:open(db_name(VBucket, State), []),
     NewState = F(Db),
     couch_db:close(Db),
     NewState.
