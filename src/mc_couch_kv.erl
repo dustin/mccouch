@@ -124,15 +124,11 @@ set(Db, Key, Flags, Expiration, Value, JsonMode) ->
 
 -spec delete(_, binary()) -> ok|not_found.
 delete(Db, Key) ->
-    case couch_db:open_doc(Db, Key, []) of
-        {ok, Doc} ->
-            {EJson} = couch_doc:to_json_obj(Doc, []),
-            DelMe = [{<<"_deleted">>, true},
-                     {<<"_id">>, Key},
-                     {<<"_rev">>, proplists:get_value(<<"_rev">>, EJson)}],
-            couch_db:update_doc(Db,
-                                couch_doc:from_json_obj({DelMe}), []),
-            ok;
-        _ ->
-            not_found
+    Doc = #doc{id = Key, deleted = true, body = {[]}},
+    case addRev(Db, Key, Doc) of
+        Doc ->
+            not_found;
+        Doc2 ->
+            {ok, _NewRev} = couch_db:update_doc(Db, Doc2, []),
+            ok
     end.
