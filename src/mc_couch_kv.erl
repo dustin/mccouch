@@ -47,7 +47,7 @@ json_decode(V) ->
     try (mochijson2:decoder([{object_hook, fun({struct,L}) -> {L} end}]))(V)
     catch
         _Type:_Error ->
-            throw({invalid_json,V})
+            throw({invalid_json, V})
     end.
 
 %% ok, Flags, Expiration, Cas, Data
@@ -90,9 +90,12 @@ validate([{<<$$:8,_/binary>>, _Val}|_Tl]) -> throw(invalid_key);
 validate([_|Tl]) -> validate(Tl).
 
 parse_json(Value) ->
-    {J} = json_decode(Value),
-    validate(J),
-    J.
+    case json_decode(Value) of
+        {J} ->
+            validate(J),
+            J;
+        _ -> throw({invalid_json, Value})
+    end.
 
 mk_json_doc(Key, Flags, Expiration, Value) ->
     case (catch parse_json(Value)) of
