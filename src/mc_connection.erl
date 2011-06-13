@@ -71,9 +71,10 @@ process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, OpCode:8, KeyLen:16,
     {Extra, Key, Body} = read_message(Socket, KeyLen, ExtraLen, BodyLen),
 
     % Hand the request off to the server.
-    Res = gen_server:call(StorageServer, {OpCode, VBucket, Extra, Key, Body, CAS}),
-
-    respond(Socket, OpCode, Opaque, Res).
+    case gen_server:call(StorageServer, {OpCode, VBucket, Extra, Key, Body, CAS}) of
+        quiet -> ok;
+        Res -> respond(Socket, OpCode, Opaque, Res)
+    end.
 
 loop(Socket, Handler) ->
     process_message(Socket, Handler, gen_tcp:recv(Socket, ?HEADER_LEN)),

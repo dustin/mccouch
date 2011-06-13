@@ -83,6 +83,18 @@ handle_call({?SET, VBucket, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
                  end, VBucket, State);
 handle_call({?SET, _, _, _, _, _}, _From, State) ->
     {reply, #mc_response{status=?EINVAL}, State};
+handle_call({?SETQ, VBucket, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
+            _From, State) ->
+    with_open_db(fun(Db) ->
+                         handle_set_call(Db, Key, Flags,
+                                         Expiration, Value,
+                                         State#state.json_mode),
+                         {reply, quiet, State}
+                 end, VBucket, State);
+handle_call({?SETQ, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{status=?EINVAL}, State};
+handle_call({?NOOP, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{}, State};
 handle_call({?DELETE, VBucket, <<>>, Key, <<>>, _CAS}, _From, State) ->
     with_open_db(fun(Db) -> {reply, handle_delete_call(Db, Key), State} end,
                  VBucket, State);
