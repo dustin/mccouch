@@ -17,7 +17,7 @@
 -include("couch_db.hrl").
 -include("mc_constants.hrl").
 
--record(state, {mc_serv, db, json_mode}).
+-record(state, {mc_serv, db, json_mode, setqs=0}).
 
 start_link(DbName, JsonMode) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [DbName, JsonMode],
@@ -55,6 +55,28 @@ handle_set_call(Db, Key, Flags, Expiration, Value, JsonMode) ->
                              JsonMode),
     #mc_response{cas=NewCas}.
 
+handle_setq_call(VBucket, Key, Flags, Expiration, Value, _CAS, Opaque, Socket, State) ->
+    spawn_link(fun() ->
+                      with_open_db(fun(Db) ->
+                                           case catch(mc_couch_kv:set(Db, Key,
+                                                                      Flags,
+                                                                      Expiration,
+                                                                      Value,
+                                                                      State#state.json_mode)) of
+                                               {ok, _} -> ok;
+                                               _Error ->
+                                                   %% TODO:  You heard the comment
+                                                   do_something_about_this
+                                           end,
+                                           gen_server:cast(?MODULE, {setq_complete,
+                                                                     Opaque, %% opaque
+                                                                     Socket,
+                                                                     0})
+                                   end, VBucket, State)
+              end),
+    %% TODO:  Put the actual opaque here
+    State#state{setqs=State#state.setqs + 1}.
+
 handle_delete_call(Db, Key) ->
     case mc_couch_kv:delete(Db, Key) of
         ok -> #mc_response{};
@@ -82,16 +104,6 @@ handle_call({?SET, VBucket, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
                              State}
                  end, VBucket, State);
 handle_call({?SET, _, _, _, _, _}, _From, State) ->
-    {reply, #mc_response{status=?EINVAL}, State};
-handle_call({?SETQ, VBucket, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
-            _From, State) ->
-    with_open_db(fun(Db) ->
-                         handle_set_call(Db, Key, Flags,
-                                         Expiration, Value,
-                                         State#state.json_mode),
-                         {reply, quiet, State}
-                 end, VBucket, State);
-handle_call({?SETQ, _, _, _, _, _}, _From, State) ->
     {reply, #mc_response{status=?EINVAL}, State};
 handle_call({?NOOP, _, _, _, _, _}, _From, State) ->
     {reply, #mc_response{}, State};
@@ -135,6 +147,14 @@ handle_cast({?TAP_CONNECT, Extra, _Key, Body, _CAS, Socket, Opaque}, State) ->
 handle_cast({?STAT, _Extra, _Key, _Body, _CAS, Socket, Opaque}, State) ->
     mc_couch_stats:stats(Socket, Opaque),
     {noreply, State};
+handle_cast({?SETQ, VBucket, <<Flags:32, Expiration:32>>, Key, Value,
+             CAS, Socket, Opaque}, State) ->
+    {noreply, handle_setq_call(VBucket, Key, Flags, Expiration, Value,
+                               CAS, Opaque, Socket, State)};
+%% non-protocol below
+handle_cast({setq_complete, Opaque, _Socket, _Status}, State) ->
+    ?LOG_INFO("Completed a setq: ~p, now have ~p", [Opaque, State#state.setqs - 1]),
+    {noreply, State#state{setqs=State#state.setqs - 1}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 handle_info(_Info, State) ->

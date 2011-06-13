@@ -62,6 +62,13 @@ process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, ?STAT:8, KeyLen:16,
 
     % Hand the request off to the server.
     gen_server:cast(StorageServer, {?STAT, Extra, Key, Body, CAS, Socket, Opaque});
+process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, ?SETQ:8, KeyLen:16,
+                                            ExtraLen:8, 0:8, VBucket:16,
+                                            BodyLen:32,
+                                            Opaque:32,
+                                            CAS:64>>}) ->
+    {Extra, Key, Body} = read_message(Socket, KeyLen, ExtraLen, BodyLen),
+    gen_server:cast(StorageServer, {?SETQ, VBucket, Extra, Key, Body, CAS, Socket, Opaque});
 process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, OpCode:8, KeyLen:16,
                                             ExtraLen:8, 0:8, VBucket:16,
                                             BodyLen:32,
