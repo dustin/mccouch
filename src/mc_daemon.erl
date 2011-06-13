@@ -94,7 +94,6 @@ delete_db(Key) ->
                   end, lists:seq(0, 1023)).
 
 processing({?GET, VBucket, <<>>, Key, <<>>, _CAS}, _From, State) ->
-    error_logger:info_msg("Got GET command for ~p.~n", [Key]),
     with_open_db(fun(Db) -> {reply, handle_get_call(Db, Key), processing, State} end,
                  VBucket, State);
 processing({?GET, _, _, _, _, _}, _From, State) ->
