@@ -87,7 +87,7 @@ handle_call({?DELETE_BUCKET, _VBucket, <<>>, Key, <<>>, 0}, _From, State) ->
     {reply, #mc_response{body="Done!"}, State};
 handle_call({?SELECT_BUCKET, _VBucket, <<>>, Name, <<>>, 0}, _From, State) ->
     {reply, #mc_response{}, State#state{db=Name}};
-handle_call({?SET_VBUCKET_STATE, VBucket, <<>>, <<>>, <<VBState:32>>, 0}, _From, State) ->
+handle_call({?SET_VBUCKET_STATE, VBucket, <<VBState:32>>, <<>>, <<>>, 0}, _From, State) ->
     mc_couch_vbucket:handle_set_state(VBucket, VBState, State);
 handle_call({?DELETE_VBUCKET, VBucket, <<>>, <<>>, <<>>, 0}, _From, State) ->
     {reply, mc_couch_vbucket:handle_delete(VBucket, State), State};
