@@ -30,8 +30,7 @@ respond(Socket, OpCode, Opaque, Res) ->
 
 % Read-data special cases a 0 size to just return an empty binary.
 read_data(_Socket, 0, _ForWhat) -> <<>>;
-read_data(Socket, N, ForWhat) ->
-    error_logger:info_msg("Reading ~p bytes of ~p~n", [N, ForWhat]),
+read_data(Socket, N, _ForWhat) ->
     {ok, Data} = gen_tcp:recv(Socket, N),
     Data.
 
@@ -47,7 +46,6 @@ process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, ?TAP_CONNECT:8, KeyL
                                             BodyLen:32,
                                             Opaque:32,
                                             CAS:64>>}) ->
-    error_logger:info_msg("Got a tap connection request for ~p.~n", [StorageServer]),
 
     {Extra, Key, Body} = read_message(Socket, KeyLen, ExtraLen, BodyLen),
 
@@ -69,8 +67,6 @@ process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, OpCode:8, KeyLen:16,
                                             BodyLen:32,
                                             Opaque:32,
                                             CAS:64>>}) ->
-    error_logger:info_msg("Got message of type ~p to give to ~p.~n",
-                          [OpCode, StorageServer]),
 
     {Extra, Key, Body} = read_message(Socket, KeyLen, ExtraLen, BodyLen),
 
