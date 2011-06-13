@@ -72,6 +72,8 @@ handle_call({?GET, VBucket, <<>>, Key, <<>>, _CAS}, _From, State) ->
     error_logger:info_msg("Got GET command for ~p.~n", [Key]),
     with_open_db(fun(Db) -> {reply, handle_get_call(Db, Key), State} end,
                  VBucket, State);
+handle_call({?GET, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{status=?EINVAL}, State};
 handle_call({?SET, VBucket, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
             _From, State) ->
     with_open_db(fun(Db) -> {reply, handle_set_call(Db, Key, Flags,
@@ -79,18 +81,30 @@ handle_call({?SET, VBucket, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
                                                     State#state.json_mode),
                              State}
                  end, VBucket, State);
+handle_call({?SET, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{status=?EINVAL}, State};
 handle_call({?DELETE, VBucket, <<>>, Key, <<>>, _CAS}, _From, State) ->
     with_open_db(fun(Db) -> {reply, handle_delete_call(Db, Key), State} end,
                  VBucket, State);
+handle_call({?DELETE, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{status=?EINVAL}, State};
 handle_call({?DELETE_BUCKET, _VBucket, <<>>, Key, <<>>, 0}, _From, State) ->
     delete_db(Key),
     {reply, #mc_response{body="Done!"}, State};
+handle_call({?DELETE_BUCKET, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{status=?EINVAL}, State};
 handle_call({?SELECT_BUCKET, _VBucket, <<>>, Name, <<>>, 0}, _From, State) ->
     {reply, #mc_response{}, State#state{db=Name}};
+handle_call({?SELECT_BUCKET, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{status=?EINVAL}, State};
 handle_call({?SET_VBUCKET_STATE, VBucket, <<VBState:32>>, <<>>, <<>>, 0}, _From, State) ->
     mc_couch_vbucket:handle_set_state(VBucket, VBState, State);
+handle_call({?SET_VBUCKET_STATE, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{status=?EINVAL}, State};
 handle_call({?DELETE_VBUCKET, VBucket, <<>>, <<>>, <<>>, 0}, _From, State) ->
     {reply, mc_couch_vbucket:handle_delete(VBucket, State), State};
+handle_call({?DELETE_VBUCKET, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{status=?EINVAL}, State};
 handle_call({OpCode, VBucket, Header, Key, Body, CAS}, _From, State) ->
     ?LOG_INFO("MC daemon: got unhandled call: ~p/~p/~p/~p/~p/~p.",
                [OpCode, VBucket, Header, Key, Body, CAS]),
@@ -101,7 +115,7 @@ handle_call(Request, _From, State) ->
     {reply, Reply, State}.
 
 handle_cast({?STAT, _Extra, <<"vbucket">>, _Body, _CAS, Socket, Opaque}, State) ->
-    mc_couch_vbucket:handle_stats(Socket, Opaque, State),
+    mc_couch_vbucket:handle_stfats(Socket, Opaque, State),
     {noreply, State};
 handle_cast({?TAP_CONNECT, Extra, _Key, Body, _CAS, Socket, Opaque}, State) ->
     mc_tap:run(State#state.db, Opaque, Socket, Extra, Body),
