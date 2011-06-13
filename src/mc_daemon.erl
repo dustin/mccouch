@@ -10,7 +10,9 @@
          handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
 %% My states
--export([processing/2, processing/3]).
+-export([processing/2, processing/3,
+        batching/2,
+        committing/2]).
 
 %% Kind of ugly to export these, but modularity win.
 -export([with_open_db/3, db_name/2, db_prefix/1]).
@@ -20,7 +22,7 @@
 -include("couch_db.hrl").
 -include("mc_constants.hrl").
 
--record(state, {mc_serv, db, json_mode, setqs=0}).
+-record(state, {mc_serv, db, json_mode, setqs=0, terminal_opaque=0}).
 
 start_link(DbName, JsonMode) ->
     gen_fsm:start_link({local, ?SERVER}, ?MODULE, [DbName, JsonMode], []).
@@ -108,8 +110,6 @@ processing({?SET, VBucket, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
                  end, VBucket, State);
 processing({?SET, _, _, _, _, _}, _From, State) ->
     {reply, #mc_response{status=?EINVAL}, processing, State};
-processing({?NOOP, _, _, _, _, _}, _From, State) ->
-    {reply, #mc_response{}, processing, State};
 processing({?DELETE, VBucket, <<>>, Key, <<>>, _CAS}, _From, State) ->
     with_open_db(fun(Db) -> {reply, handle_delete_call(Db, Key), processing, State} end,
                  VBucket, State);
@@ -146,16 +146,42 @@ processing({?TAP_CONNECT, Extra, _Key, Body, _CAS, Socket, Opaque}, State) ->
 processing({?STAT, _Extra, _Key, _Body, _CAS, Socket, Opaque}, State) ->
     mc_couch_stats:stats(Socket, Opaque),
     {next_state, processing, State};
+processing({?NOOP, Socket, Opaque}, State) ->
+    mc_connection:respond(Socket, ?NOOP, Opaque, #mc_response{}),
+    {next_state, processing, State};
 processing({?SETQ, VBucket, <<Flags:32, Expiration:32>>, Key, Value,
              CAS, Socket, Opaque}, State) ->
-    {next_state, processing, handle_setq_call(VBucket, Key, Flags, Expiration, Value,
-                                              CAS, Opaque, Socket, State)};
+    {next_state, batching, handle_setq_call(VBucket, Key, Flags, Expiration, Value,
+                                            CAS, Opaque, Socket, State)};
 %% non-protocol below
-processing({setq_complete, Opaque, _Socket, _Status}, State) ->
-    ?LOG_INFO("Completed a setq: ~p, now have ~p", [Opaque, State#state.setqs - 1]),
-    {next_state, processing, State#state{setqs=State#state.setqs - 1}};
 processing(_Msg, State) ->
-    {noreply, processing, State}.
+    {next_state, processing, State}.
+
+
+%% Batch stuff
+batching({?SETQ, VBucket, <<Flags:32, Expiration:32>>, Key, Value,
+             CAS, Socket, Opaque}, State) ->
+    {next_state, batching, handle_setq_call(VBucket, Key, Flags, Expiration, Value,
+                                            CAS, Opaque, Socket, State)};
+batching({setq_complete, _Opaque, _Socket, _Status}, State) ->
+    {next_state, batching, State#state{setqs=State#state.setqs - 1}};
+batching({?NOOP, _Socket, Opaque}, State) ->
+    {next_state, committing, State#state{terminal_opaque=Opaque}};
+batching(Msg, _State) ->
+    ?LOG_INFO("Got unknown thing in batching: ~p", [Msg]),
+    exit("WTF").
+
+
+%% End of a transaction.
+
+committing({setq_complete, _Opaque, Socket, _Status}, State=#state{setqs=1}) ->
+    mc_connection:respond(Socket, ?NOOP, State#state.terminal_opaque, #mc_response{}),
+    {next_state, processing, State#state{setqs=0}};
+committing({setq_complete, _Opaque, _Socket, _Status}, State) ->
+    {next_state, committing, State#state{setqs=State#state.setqs - 1}};
+committing(Msg, _State) ->
+    ?LOG_INFO("Got unknown thing in committing: ~p", [Msg]),
+    exit("WTF").
 
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.

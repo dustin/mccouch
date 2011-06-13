@@ -69,6 +69,13 @@ process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, ?SETQ:8, KeyLen:16,
                                             CAS:64>>}) ->
     {Extra, Key, Body} = read_message(Socket, KeyLen, ExtraLen, BodyLen),
     gen_fsm:send_event(StorageServer, {?SETQ, VBucket, Extra, Key, Body, CAS, Socket, Opaque});
+process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, ?NOOP:8, KeyLen:16,
+                                            ExtraLen:8, 0:8, _VBucket:16,
+                                            BodyLen:32,
+                                            Opaque:32,
+                                            _CAS:64>>}) ->
+    {_Extra, _Key, _Body} = read_message(Socket, KeyLen, ExtraLen, BodyLen),
+    gen_fsm:send_event(StorageServer, {?NOOP, Socket, Opaque});
 process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, OpCode:8, KeyLen:16,
                                             ExtraLen:8, 0:8, VBucket:16,
                                             BodyLen:32,
