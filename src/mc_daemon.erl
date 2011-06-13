@@ -66,15 +66,16 @@ handle_setq_call(VBucket, Key, Flags, Expiration, Value, _CAS, Opaque, Socket, S
                                                                       Expiration,
                                                                       Value,
                                                                       State#state.json_mode)) of
-                                               {ok, _} -> ok;
-                                               _Error ->
+                                               {'EXIT', Error} ->
+                                                   ?LOG_INFO("Error persisting=~p.", [Error]),
                                                    %% TODO:  You heard the comment
-                                                   do_something_about_this
+                                                   do_something_about_this;
+                                               _CAS -> ok
                                            end,
-                                           gen_server:cast(?MODULE, {setq_complete,
-                                                                     Opaque, %% opaque
-                                                                     Socket,
-                                                                     0})
+                                           gen_fsm:send_event(?MODULE, {setq_complete,
+                                                                        Opaque, %% opaque
+                                                                        Socket,
+                                                                        0})
                                    end, VBucket, State)
               end),
     %% TODO:  Put the actual opaque here
