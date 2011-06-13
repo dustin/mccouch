@@ -50,7 +50,7 @@ process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, ?TAP_CONNECT:8, KeyL
     {Extra, Key, Body} = read_message(Socket, KeyLen, ExtraLen, BodyLen),
 
     % Hand the request off to the server.
-    gen_server:cast(StorageServer, {?TAP_CONNECT, Extra, Key, Body, CAS, Socket, Opaque});
+    gen_fsm:send_event(StorageServer, {?TAP_CONNECT, Extra, Key, Body, CAS, Socket, Opaque});
 process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, ?STAT:8, KeyLen:16,
                                             ExtraLen:8, 0:8, _VBucket:16,
                                             BodyLen:32,
@@ -61,14 +61,14 @@ process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, ?STAT:8, KeyLen:16,
     {Extra, Key, Body} = read_message(Socket, KeyLen, ExtraLen, BodyLen),
 
     % Hand the request off to the server.
-    gen_server:cast(StorageServer, {?STAT, Extra, Key, Body, CAS, Socket, Opaque});
+    gen_fsm:send_event(StorageServer, {?STAT, Extra, Key, Body, CAS, Socket, Opaque});
 process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, ?SETQ:8, KeyLen:16,
                                             ExtraLen:8, 0:8, VBucket:16,
                                             BodyLen:32,
                                             Opaque:32,
                                             CAS:64>>}) ->
     {Extra, Key, Body} = read_message(Socket, KeyLen, ExtraLen, BodyLen),
-    gen_server:cast(StorageServer, {?SETQ, VBucket, Extra, Key, Body, CAS, Socket, Opaque});
+    gen_fsm:send_event(StorageServer, {?SETQ, VBucket, Extra, Key, Body, CAS, Socket, Opaque});
 process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, OpCode:8, KeyLen:16,
                                             ExtraLen:8, 0:8, VBucket:16,
                                             BodyLen:32,
@@ -78,7 +78,7 @@ process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, OpCode:8, KeyLen:16,
     {Extra, Key, Body} = read_message(Socket, KeyLen, ExtraLen, BodyLen),
 
     % Hand the request off to the server.
-    case gen_server:call(StorageServer, {OpCode, VBucket, Extra, Key, Body, CAS}) of
+    case gen_fsm:sync_send_event(StorageServer, {OpCode, VBucket, Extra, Key, Body, CAS}) of
         quiet -> ok;
         Res -> respond(Socket, OpCode, Opaque, Res)
     end.

@@ -33,7 +33,7 @@ set_vbucket(VBucket, StateName, State) ->
     mc_couch_kv:set(Db, <<"_local/vbstate">>, 0, 0,
                     StateJson, true),
     couch_db:close(Db),
-    {reply, #mc_response{}, State}.
+    {reply, #mc_response{}, processing, State}.
 
 handle_delete(VBucket, State) ->
     DbName = mc_daemon:db_name(VBucket, State),

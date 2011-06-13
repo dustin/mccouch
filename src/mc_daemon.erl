@@ -1,13 +1,16 @@
 -module(mc_daemon).
 
--behaviour(gen_server).
+-behaviour(gen_fsm).
 
 %% API
 -export([start_link/2]).
 
-%% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
+%% gen_fsm callbacks
+-export([init/1, handle_event/3,
+         handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
+
+%% My states
+-export([processing/2, processing/3]).
 
 %% Kind of ugly to export these, but modularity win.
 -export([with_open_db/3, db_name/2, db_prefix/1]).
@@ -20,13 +23,13 @@
 -record(state, {mc_serv, db, json_mode, setqs=0}).
 
 start_link(DbName, JsonMode) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [DbName, JsonMode],
-                          []).
+    gen_fsm:start_link({local, ?SERVER}, ?MODULE, [DbName, JsonMode], []).
 
 init([DbName, JsonMode]) ->
     ?LOG_INFO("MC daemon: starting: json_mode=~p.", [JsonMode]),
     {ok, S} = mc_tcp_listener:start_link(11213, self()),
-    {ok, #state{mc_serv=S, db=list_to_binary(DbName), json_mode=JsonMode}}.
+    {ok, processing,
+     #state{mc_serv=S, db=list_to_binary(DbName), json_mode=JsonMode}}.
 
 db_name(VBucket, State)->
     iolist_to_binary([State#state.db, $/, integer_to_list(VBucket)]).
@@ -90,78 +93,82 @@ delete_db(Key) ->
                           couch_server:delete(list_to_binary(DbName), [])
                   end, lists:seq(0, 1023)).
 
-handle_call({?GET, VBucket, <<>>, Key, <<>>, _CAS}, _From, State) ->
+processing({?GET, VBucket, <<>>, Key, <<>>, _CAS}, _From, State) ->
     error_logger:info_msg("Got GET command for ~p.~n", [Key]),
-    with_open_db(fun(Db) -> {reply, handle_get_call(Db, Key), State} end,
+    with_open_db(fun(Db) -> {reply, handle_get_call(Db, Key), processing, State} end,
                  VBucket, State);
-handle_call({?GET, _, _, _, _, _}, _From, State) ->
-    {reply, #mc_response{status=?EINVAL}, State};
-handle_call({?SET, VBucket, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
-            _From, State) ->
+processing({?GET, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{status=?EINVAL}, processing, State};
+processing({?SET, VBucket, <<Flags:32, Expiration:32>>, Key, Value, _CAS},
+           _From, State) ->
     with_open_db(fun(Db) -> {reply, handle_set_call(Db, Key, Flags,
                                                     Expiration, Value,
                                                     State#state.json_mode),
-                             State}
+                             processing, State}
                  end, VBucket, State);
-handle_call({?SET, _, _, _, _, _}, _From, State) ->
-    {reply, #mc_response{status=?EINVAL}, State};
-handle_call({?NOOP, _, _, _, _, _}, _From, State) ->
-    {reply, #mc_response{}, State};
-handle_call({?DELETE, VBucket, <<>>, Key, <<>>, _CAS}, _From, State) ->
-    with_open_db(fun(Db) -> {reply, handle_delete_call(Db, Key), State} end,
+processing({?SET, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{status=?EINVAL}, processing, State};
+processing({?NOOP, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{}, processing, State};
+processing({?DELETE, VBucket, <<>>, Key, <<>>, _CAS}, _From, State) ->
+    with_open_db(fun(Db) -> {reply, handle_delete_call(Db, Key), processing, State} end,
                  VBucket, State);
-handle_call({?DELETE, _, _, _, _, _}, _From, State) ->
-    {reply, #mc_response{status=?EINVAL}, State};
-handle_call({?DELETE_BUCKET, _VBucket, <<>>, Key, <<>>, 0}, _From, State) ->
+processing({?DELETE, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{status=?EINVAL}, processing, State};
+processing({?DELETE_BUCKET, _VBucket, <<>>, Key, <<>>, 0}, _From, State) ->
     delete_db(Key),
-    {reply, #mc_response{body="Done!"}, State};
-handle_call({?DELETE_BUCKET, _, _, _, _, _}, _From, State) ->
-    {reply, #mc_response{status=?EINVAL}, State};
-handle_call({?SELECT_BUCKET, _VBucket, <<>>, Name, <<>>, 0}, _From, State) ->
-    {reply, #mc_response{}, State#state{db=Name}};
-handle_call({?SELECT_BUCKET, _, _, _, _, _}, _From, State) ->
-    {reply, #mc_response{status=?EINVAL}, State};
-handle_call({?SET_VBUCKET_STATE, VBucket, <<VBState:32>>, <<>>, <<>>, 0}, _From, State) ->
+    {reply, #mc_response{body="Done!"}, processing, State};
+processing({?DELETE_BUCKET, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{status=?EINVAL}, processing, State};
+processing({?SELECT_BUCKET, _VBucket, <<>>, Name, <<>>, 0}, _From, State) ->
+    {reply, #mc_response{}, processing, State#state{db=Name}};
+processing({?SELECT_BUCKET, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{status=?EINVAL}, processing, State};
+processing({?SET_VBUCKET_STATE, VBucket, <<VBState:32>>, <<>>, <<>>, 0}, _From, State) ->
     mc_couch_vbucket:handle_set_state(VBucket, VBState, State);
-handle_call({?SET_VBUCKET_STATE, _, _, _, _, _}, _From, State) ->
-    {reply, #mc_response{status=?EINVAL}, State};
-handle_call({?DELETE_VBUCKET, VBucket, <<>>, <<>>, <<>>, 0}, _From, State) ->
-    {reply, mc_couch_vbucket:handle_delete(VBucket, State), State};
-handle_call({?DELETE_VBUCKET, _, _, _, _, _}, _From, State) ->
-    {reply, #mc_response{status=?EINVAL}, State};
-handle_call({OpCode, VBucket, Header, Key, Body, CAS}, _From, State) ->
+processing({?SET_VBUCKET_STATE, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{status=?EINVAL}, processing, State};
+processing({?DELETE_VBUCKET, VBucket, <<>>, <<>>, <<>>, 0}, _From, State) ->
+    {reply, mc_couch_vbucket:handle_delete(VBucket, State), processing, State};
+processing({?DELETE_VBUCKET, _, _, _, _, _}, _From, State) ->
+    {reply, #mc_response{status=?EINVAL}, processing, State};
+processing({OpCode, VBucket, Header, Key, Body, CAS}, _From, State) ->
     ?LOG_INFO("MC daemon: got unhandled call: ~p/~p/~p/~p/~p/~p.",
                [OpCode, VBucket, Header, Key, Body, CAS]),
-    {reply, #mc_response{status=?UNKNOWN_COMMAND, body="WTF, mate?"}, State};
-handle_call(Request, _From, State) ->
-    ?LOG_DEBUG("MC daemon: got call.", [Request]),
-    Reply = ok,
-    {reply, Reply, State}.
+    {reply, #mc_response{status=?UNKNOWN_COMMAND, body="WTF, mate?"}, processing, State}.
 
-handle_cast({?STAT, _Extra, <<"vbucket">>, _Body, _CAS, Socket, Opaque}, State) ->
+processing({?STAT, _Extra, <<"vbucket">>, _Body, _CAS, Socket, Opaque}, State) ->
     mc_couch_vbucket:handle_stfats(Socket, Opaque, State),
-    {noreply, State};
-handle_cast({?TAP_CONNECT, Extra, _Key, Body, _CAS, Socket, Opaque}, State) ->
+    {next_state, processing, State};
+processing({?TAP_CONNECT, Extra, _Key, Body, _CAS, Socket, Opaque}, State) ->
     mc_tap:run(State#state.db, Opaque, Socket, Extra, Body),
-    {noreply, State};
-handle_cast({?STAT, _Extra, _Key, _Body, _CAS, Socket, Opaque}, State) ->
+    {next_state, processing, State};
+processing({?STAT, _Extra, _Key, _Body, _CAS, Socket, Opaque}, State) ->
     mc_couch_stats:stats(Socket, Opaque),
-    {noreply, State};
-handle_cast({?SETQ, VBucket, <<Flags:32, Expiration:32>>, Key, Value,
+    {next_state, processing, State};
+processing({?SETQ, VBucket, <<Flags:32, Expiration:32>>, Key, Value,
              CAS, Socket, Opaque}, State) ->
-    {noreply, handle_setq_call(VBucket, Key, Flags, Expiration, Value,
-                               CAS, Opaque, Socket, State)};
+    {next_state, processing, handle_setq_call(VBucket, Key, Flags, Expiration, Value,
+                                              CAS, Opaque, Socket, State)};
 %% non-protocol below
-handle_cast({setq_complete, Opaque, _Socket, _Status}, State) ->
+processing({setq_complete, Opaque, _Socket, _Status}, State) ->
     ?LOG_INFO("Completed a setq: ~p, now have ~p", [Opaque, State#state.setqs - 1]),
-    {noreply, State#state{setqs=State#state.setqs - 1}};
-handle_cast(_Msg, State) ->
-    {noreply, State}.
-handle_info(_Info, State) ->
-    {noreply, State}.
+    {next_state, processing, State#state{setqs=State#state.setqs - 1}};
+processing(_Msg, State) ->
+    {noreply, processing, State}.
 
-terminate(_Reason, _State) ->
+handle_event(_Event, StateName, State) ->
+    {next_state, StateName, State}.
+
+handle_sync_event(_Event, _From, StateName, State) ->
+    Reply = ok,
+    {reply, Reply, StateName, State}.
+
+handle_info(_Info, StateName, State) ->
+    {next_state, StateName, State}.
+
+terminate(_Reason, _StateName, _State) ->
     ok.
 
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+code_change(_OldVsn, StateName, State, _Extra) ->
+    {ok, StateName, State}.
