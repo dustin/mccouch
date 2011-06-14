@@ -142,7 +142,7 @@ processing(Msg, _From, _State) ->
     exit("WTF").
 
 processing({?STAT, _Extra, <<"vbucket">>, _Body, _CAS, Socket, Opaque}, State) ->
-    mc_couch_vbucket:handle_stfats(Socket, Opaque, State),
+    mc_couch_vbucket:handle_stats(Socket, Opaque, State),
     {next_state, processing, State};
 processing({?TAP_CONNECT, Extra, _Key, Body, _CAS, Socket, Opaque}, State) ->
     mc_tap:run(State#state.db, Opaque, Socket, Extra, Body),
