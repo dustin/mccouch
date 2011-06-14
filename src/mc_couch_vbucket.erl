@@ -52,17 +52,17 @@ list_vbuckets(State) ->
                                        [DBPrefix, VB] ->
                                            VBStr = binary_to_list(VB),
                                            VBInt = list_to_integer(VBStr),
-                                           StatKey = io_lib:format("vb_~p", [VBInt]),
                                            StatVal = get_state(VBInt, State),
-                                           {StatKey, StatVal};
+                                           {VBInt, StatVal};
                                        _ -> ignore
                                    end
                            end, DBs)).
 
 handle_stats(Socket, Opaque, State) ->
-    lists:foreach(fun({N, V}) ->
+    lists:foreach(fun({VBInt, V}) ->
+                          StatKey = io_lib:format("vb_~p", [VBInt]),
                           mc_connection:respond(Socket, ?STAT, Opaque,
-                                                mc_couch_stats:mk_stat(N, V))
+                                                mc_couch_stats:mk_stat(StatKey, V))
                   end, list_vbuckets(State)),
     mc_connection:respond(Socket, ?STAT, Opaque,
                           mc_couch_stats:mk_stat("", "")).
