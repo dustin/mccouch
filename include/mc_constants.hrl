@@ -82,6 +82,7 @@
 -define(DELTA_BADVAL,     16#06).
 -define(UNKNOWN_COMMAND,  16#81).
 -define(ENOMEM,           16#82).
+-define(EINTERNAL,        16#84).
 
 -record(mc_response, {
           status=0,

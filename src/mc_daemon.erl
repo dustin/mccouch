@@ -63,24 +63,25 @@ handle_set_call(Db, Key, Flags, Expiration, Value, JsonMode) ->
 handle_setq_call(VBucket, Key, Flags, Expiration, Value, _CAS, Opaque, Socket, State) ->
     spawn_link(fun() ->
                       with_open_db(fun(Db) ->
-                                           case catch(mc_couch_kv:set(Db, Key,
-                                                                      Flags,
-                                                                      Expiration,
-                                                                      Value,
-                                                                      State#state.json_mode)) of
-                                               {'EXIT', Error} ->
-                                                   ?LOG_INFO("Error persisting=~p.", [Error]),
-                                                   %% TODO:  You heard the comment
-                                                   do_something_about_this;
-                                               _CAS -> ok
-                                           end,
+                                           Res = case catch(mc_couch_kv:set(Db, Key,
+                                                                            Flags,
+                                                                            Expiration,
+                                                                            Value,
+                                                                            State#state.json_mode)) of
+                                                     CAS when is_integer(CAS) ->
+                                                         #mc_response{cas=CAS};
+                                                     Error ->
+                                                         ?LOG_INFO("Error persisting=~p.", [Error]),
+                                                         Message = io_lib:format("~p", [Error]),
+                                                         #mc_response{status=?EINTERNAL,
+                                                                      body=Message}
+                                                 end,
                                            gen_fsm:send_event(?MODULE, {setq_complete,
                                                                         Opaque, %% opaque
                                                                         Socket,
-                                                                        0})
+                                                                        Res})
                                    end, VBucket, State)
               end),
-    %% TODO:  Put the actual opaque here
     State#state{setqs=State#state.setqs + 1}.
 
 handle_delete_call(Db, Key) ->
@@ -180,10 +181,17 @@ batching(Msg, _State) ->
 %% Committing a transaction
 %%
 
-committing({setq_complete, _Opaque, Socket, _Status}, State=#state{setqs=1}) ->
+respond_if_fail(_Socket, _Op, _Opaque, _Res=#mc_response{status=?SUCCESS}) ->
+    ok;
+respond_if_fail(Socket, Op, Opaque, Res) ->
+    mc_connection:respond(Socket, Op, Opaque, Res).
+
+committing({setq_complete, Opaque, Socket, Res}, State=#state{setqs=1}) ->
+    respond_if_fail(Socket, ?SETQ, Opaque, Res),
     mc_connection:respond(Socket, ?NOOP, State#state.terminal_opaque, #mc_response{}),
     {next_state, processing, State#state{setqs=0}};
-committing({setq_complete, _Opaque, _Socket, _Status}, State) ->
+committing({setq_complete, Opaque, Socket, Res}, State) ->
+    respond_if_fail(Socket, ?SETQ, Opaque, Res),
     {next_state, committing, State#state{setqs=State#state.setqs - 1}};
 committing(Msg, _State) ->
     ?LOG_INFO("Got unknown thing in committing/2: ~p", [Msg]),
