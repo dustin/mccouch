@@ -4,7 +4,8 @@
          set_vbucket/3,
          handle_delete/2,
          handle_stats/3,
-         handle_set_state/3]).
+         handle_set_state/3,
+         list_vbuckets/1]).
 
 -include("couch_db.hrl").
 -include("mc_constants.hrl").
@@ -40,24 +41,29 @@ handle_delete(VBucket, State) ->
     couch_server:delete(DbName, []),
     #mc_response{}.
 
-handle_stats(Socket, Opaque, State) ->
+list_vbuckets(State) ->
     {ok, DBs} = couch_server:all_databases(),
     DBPrefix = mc_daemon:db_prefix(State),
     Len = size(DBPrefix),
-    lists:foreach(fun(DBName) ->
-                          case (catch binary:split(DBName, <<$/>>,
-                                                   [{scope, {Len,size(DBName)-Len}}])) of
-                              [DBPrefix, VB] ->
-                                  VBStr = binary_to_list(VB),
-                                  VBInt = list_to_integer(VBStr),
-                                  StatKey = io_lib:format("vb_~p", [VBInt]),
-                                  StatVal = get_state(VBInt, State),
-                                  mc_connection:respond(Socket, ?STAT, Opaque,
-                                                        mc_couch_stats:mk_stat(StatKey,
-                                                                               StatVal));
-                              _ -> ok
-                          end
-                  end, DBs),
+    lists:filter(fun is_tuple/1,
+                 lists:map(fun(DBName) ->
+                                   case (catch binary:split(DBName, <<$/>>,
+                                                            [{scope, {Len,size(DBName)-Len}}])) of
+                                       [DBPrefix, VB] ->
+                                           VBStr = binary_to_list(VB),
+                                           VBInt = list_to_integer(VBStr),
+                                           StatKey = io_lib:format("vb_~p", [VBInt]),
+                                           StatVal = get_state(VBInt, State),
+                                           {StatKey, StatVal};
+                                       _ -> ignore
+                                   end
+                           end, DBs)).
+
+handle_stats(Socket, Opaque, State) ->
+    lists:foreach(fun({N, V}) ->
+                          mc_connection:respond(Socket, ?STAT, Opaque,
+                                                mc_couch_stats:mk_stat(N, V))
+                  end, list_vbuckets(State)),
     mc_connection:respond(Socket, ?STAT, Opaque,
                           mc_couch_stats:mk_stat("", "")).
 
