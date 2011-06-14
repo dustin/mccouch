@@ -144,7 +144,7 @@ processing({?STAT, _Extra, <<"vbucket">>, _Body, _CAS, Socket, Opaque}, State) -
     mc_couch_vbucket:handle_stats(Socket, Opaque, State),
     {next_state, processing, State};
 processing({?TAP_CONNECT, Extra, _Key, Body, _CAS, Socket, Opaque}, State) ->
-    mc_tap:run(State#state.db, Opaque, Socket, Extra, Body),
+    mc_tap:run(State, Opaque, Socket, Extra, Body),
     {next_state, processing, State};
 processing({?STAT, _Extra, _Key, _Body, _CAS, Socket, Opaque}, State) ->
     mc_couch_stats:stats(Socket, Opaque),
