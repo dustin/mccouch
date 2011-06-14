@@ -1,9 +1,12 @@
 -module (mc_connection).
 
--export([loop/2]).
+-export([start_link/2, init/2]).
 -export([respond/5, respond/4]).
 
 -include("mc_constants.hrl").
+
+start_link(Handler, Socket) ->
+    {ok, spawn_link(?MODULE, init, [Socket, Handler])}.
 
 bin_size(undefined) -> 0;
 bin_size(IoList) -> iolist_size(IoList).
@@ -89,6 +92,11 @@ process_message(Socket, StorageServer, {ok, <<?REQ_MAGIC:8, OpCode:8, KeyLen:16,
         quiet -> ok;
         Res -> respond(Socket, OpCode, Opaque, Res)
     end.
+
+init(Socket, Handler) ->
+    %% The spawner will tell us when we are the controlling process.
+    receive go -> ok end,
+    loop(Socket, Handler).
 
 loop(Socket, Handler) ->
     process_message(Socket, Handler, gen_tcp:recv(Socket, ?HEADER_LEN)),

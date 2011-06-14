@@ -31,6 +31,5 @@ init(PortNum, StorageServer) ->
 % Accept incoming connections
 accept_loop(LS, StorageServer) ->
     {ok, NS} = gen_tcp:accept(LS),
-    Pid = spawn(mc_connection, loop, [NS, StorageServer]),
-    gen_tcp:controlling_process(NS, Pid),
+    mc_conn_sup:start_connection(NS),
     accept_loop(LS, StorageServer).

@@ -22,16 +22,15 @@
 -include("couch_db.hrl").
 -include("mc_constants.hrl").
 
--record(state, {mc_serv, db, json_mode, setqs=0, terminal_opaque=0}).
+-record(state, {db, json_mode, setqs=0, terminal_opaque=0}).
 
 start_link(DbName, JsonMode) ->
     gen_fsm:start_link({local, ?SERVER}, ?MODULE, [DbName, JsonMode], []).
 
 init([DbName, JsonMode]) ->
     ?LOG_INFO("MC daemon: starting: json_mode=~p.", [JsonMode]),
-    {ok, S} = mc_tcp_listener:start_link(11213, self()),
     {ok, processing,
-     #state{mc_serv=S, db=list_to_binary(DbName), json_mode=JsonMode}}.
+     #state{db=list_to_binary(DbName), json_mode=JsonMode}}.
 
 db_name(VBucket, State)->
     iolist_to_binary([State#state.db, $/, integer_to_list(VBucket)]).
