@@ -9,7 +9,6 @@
 -define(SERVER, ?MODULE).
 
 start_link(DbName, JsonMode) ->
-    application:start(sasl),
     supervisor:start_link({local, ?SERVER}, ?MODULE, [DbName, JsonMode]).
 
 %%--------------------------------------------------------------------
