@@ -135,7 +135,10 @@ processing({?DELETE_VBUCKET, _, _, _, _, _}, _From, State) ->
 processing({OpCode, VBucket, Header, Key, Body, CAS}, _From, State) ->
     ?LOG_INFO("MC daemon: got unhandled call: ~p/~p/~p/~p/~p/~p.",
                [OpCode, VBucket, Header, Key, Body, CAS]),
-    {reply, #mc_response{status=?UNKNOWN_COMMAND, body="WTF, mate?"}, processing, State}.
+    {reply, #mc_response{status=?UNKNOWN_COMMAND, body="WTF, mate?"}, processing, State};
+processing(Msg, _From, _State) ->
+    ?LOG_INFO("Got unknown thing in processing/3: ~p", [Msg]),
+    exit("WTF").
 
 processing({?STAT, _Extra, <<"vbucket">>, _Body, _CAS, Socket, Opaque}, State) ->
     mc_couch_vbucket:handle_stfats(Socket, Opaque, State),
@@ -153,12 +156,14 @@ processing({?SETQ, VBucket, <<Flags:32, Expiration:32>>, Key, Value,
              CAS, Socket, Opaque}, State) ->
     {next_state, batching, handle_setq_call(VBucket, Key, Flags, Expiration, Value,
                                             CAS, Opaque, Socket, State)};
-%% non-protocol below
-processing(_Msg, State) ->
-    {next_state, processing, State}.
+processing(Msg, _State) ->
+    ?LOG_INFO("Got unknown thing in processing/2: ~p", [Msg]),
+    exit("WTF").
 
-
+%%
 %% Batch stuff
+%%
+
 batching({?SETQ, VBucket, <<Flags:32, Expiration:32>>, Key, Value,
              CAS, Socket, Opaque}, State) ->
     {next_state, batching, handle_setq_call(VBucket, Key, Flags, Expiration, Value,
@@ -168,11 +173,12 @@ batching({setq_complete, _Opaque, _Socket, _Status}, State) ->
 batching({?NOOP, _Socket, Opaque}, State) ->
     {next_state, committing, State#state{terminal_opaque=Opaque}};
 batching(Msg, _State) ->
-    ?LOG_INFO("Got unknown thing in batching: ~p", [Msg]),
+    ?LOG_INFO("Got unknown thing in batching/2: ~p", [Msg]),
     exit("WTF").
 
-
-%% End of a transaction.
+%%
+%% Committing a transaction
+%%
 
 committing({setq_complete, _Opaque, Socket, _Status}, State=#state{setqs=1}) ->
     mc_connection:respond(Socket, ?NOOP, State#state.terminal_opaque, #mc_response{}),
@@ -180,8 +186,10 @@ committing({setq_complete, _Opaque, Socket, _Status}, State=#state{setqs=1}) ->
 committing({setq_complete, _Opaque, _Socket, _Status}, State) ->
     {next_state, committing, State#state{setqs=State#state.setqs - 1}};
 committing(Msg, _State) ->
-    ?LOG_INFO("Got unknown thing in committing: ~p", [Msg]),
+    ?LOG_INFO("Got unknown thing in committing/2: ~p", [Msg]),
     exit("WTF").
+
+%% Everything else
 
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
